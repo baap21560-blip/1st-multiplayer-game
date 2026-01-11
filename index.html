@@ -432,7 +432,7 @@ document.getElementById('authSwitch').onclick = () => {
     isLoginMode = !isLoginMode;
     document.getElementById('authTitle').innerText = isLoginMode ? "Login Player" : "Create Player";
     document.getElementById('authBtn').innerText = isLoginMode ? "Login" : "Enter Lobby";
-    document.getElementById('authSwitch').innerText = isLoginMode ? "Switch to Register" :
+    document.getElementById('authSwitch').innerText = isLoginMode ? "Switch to Register" : "Switch to Login";
 };
 
 document.getElementById('authBtn').onclick = () => {
@@ -705,4 +705,5 @@ window.onload = () => { if (currentUser) login(currentUser); };
 </script>
 </body>
     </html>
+
 
