@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIP Arena</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"></script>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
+
+    :root {
+        --primary: #38bdf8;
+        --bg: #030712;
+        --glass: rgba(30, 41, 59, 0.65);
+        --glass-border: rgba(255, 255, 255, 0.1);
+    }
+
+    body { 
+        font-family: 'Outfit', sans-serif; 
+        background: var(--bg); 
+        background-image: radial-gradient(circle at top right, #1e293b, #030712);
+        display: flex; justify-content: center; min-height: 100vh; margin: 0; padding: 15px; color: #fff; 
+        overflow-x: hidden;
+    }
+    
+    #msgPopup {
+        position: fixed; top: -100px; left: 50%; transform: translateX(-50%);
+        background: var(--primary); color: #0f172a; padding: 12px 25px; border-radius: 50px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-weight: bold; z-index: 9999;
+        transition: top 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); display: flex; align-items: center; gap: 10px; border: 2px solid #fff;
+    }
+    #msgPopup.show { top: 20px; }
+
+    .screen { 
+        display: none; background: var(--glass); backdrop-filter: blur(16px); 
+        padding: 40px; border-radius: 30px; border: 1px solid var(--glass-border);
+        text-align: center; width: 100%; max-width: 400px; align-self: center;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+    }
+    .screen.active { display: block; animation: fadeIn 0.5s ease; }
+
+    .container { display: none; gap: 20px; max-width: 1000px; width: 100%; flex-wrap: wrap; justify-content: center; align-items: flex-start; padding-top: 40px; }
+    .container.active { display: flex; }
+
+    .game-box { 
+        background: var(--glass); backdrop-filter: blur(16px); padding: 30px; 
+        border-radius: 30px; border: 1px solid var(--glass-border); 
+        text-align: center; flex: 1; min-width: 320px; 
+    }
+    
+    /* MODE SELECTOR STYLING */
+    .mode-container { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 20px 0; }
+    .mode-card { 
+        background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); 
+        padding: 15px; border-radius: 15px; cursor: pointer; transition: 0.3s;
+        display: flex; align-items: center; gap: 15px; text-align: left;
+    }
+    .mode-card:hover { background: rgba(56, 189, 248, 0.1); border-color: var(--primary); transform: scale(1.02); }
+    .mode-card.selected { border-color: var(--primary); background: rgba(56, 189, 248, 0.2); }
+    .mode-icon { font-size: 1.5em; }
+
+    #board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px auto; max-width: 320px; }
+    .cell { 
+        background: rgba(15, 23, 42, 0.5); aspect-ratio: 1/1; display: flex; justify-content: center; 
+        align-items: center; font-size: 3em; cursor: pointer; border-radius: 18px; 
+        transition: 0.3s; border: 1px solid var(--glass-border);
+    }
+    .cell:hover { background: rgba(56, 189, 248, 0.1); transform: translateY(-3px); }
+    .cell.x-color { color: #fb7185; text-shadow: 0 0 15px rgba(251, 113, 133, 0.4); }
+    .cell.o-color { color: #38bdf8; text-shadow: 0 0 15px rgba(56, 189, 248, 0.4); }
+    .cell.m-color { color: #facc15; text-shadow: 0 0 15px rgba(250, 204, 21, 0.4); }
+
+    /* DOTS AND BOXES STYLING */
+    #dotsBoard { 
+        display: none; margin: 20px auto; position: relative; 
+        background: rgba(15, 23, 42, 0.3); border-radius: 20px; padding: 20px;
+    }
+    .dot { width: 10px; height: 10px; background: #94a3b8; border-radius: 50%; position: absolute; z-index: 5; }
+    .line { position: absolute; background: rgba(255,255,255,0.1); cursor: pointer; border-radius: 4px; transition: 0.2s; }
+    .line:hover { background: rgba(255,255,255,0.3); }
+    .line.active-x { background: #fb7185; box-shadow: 0 0 10px #fb7185; }
+    .line.active-o { background: #38bdf8; box-shadow: 0 0 10px #38bdf8; }
+    .box-owner { position: absolute; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2em; opacity: 0.6; border-radius: 4px; }
+    .box-owner.x-fill { background: rgba(251, 113, 133, 0.2); color: #fb7185; }
+    .box-owner.o-fill { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+    
+    input { 
+        padding: 16px; border-radius: 14px; border: 1px solid var(--glass-border); 
+        width: 90%; background: rgba(0,0,0,0.3); color: white; outline: none; margin-bottom: 12px; font-family: inherit;
+    }
+    button { 
+        padding: 16px 25px; border-radius: 14px; border: none; background: var(--primary); 
+        color: #0f172a; cursor: pointer; font-weight: 700; width: 95%; transition: 0.3s; margin-top: 5px; font-family: inherit;
+    }
+    button:hover { opacity: 0.9; transform: scale(1.02); filter: brightness(1.1); }
+    
+    #restartBtn { background: #334155; color: white; display: none; margin-top: 15px;}
+    #restartBtn.visible { display: block; }
+
+    .chat-box { 
+        background: var(--glass); backdrop-filter: blur(16px); padding: 20px; 
+        border-radius: 30px; border: 1px solid var(--glass-border); width: 360px; height: 600px; 
+        display: flex; flex-direction: column; position: relative; 
+    }
+    #chatMessages { flex: 1; overflow-y: auto; padding-right: 5px; scrollbar-width: thin; display: flex; flex-direction: column; gap: 10px; }
+    #chatMessages p { 
+        background: rgba(255,255,255,0.05); padding: 12px 16px; border-radius: 18px; 
+        font-size: 0.9em; align-self: flex-start; max-width: 80%; border: 1px solid var(--glass-border); line-height: 1.4; margin: 0;
+    }
+    #chatMessages p.me { background: var(--primary); color: #0f172a; align-self: flex-end; font-weight: 500; border: none; }
+
+    #stickerPanel { 
+        display: none; position: absolute; bottom: 80px; left: 10px; right: 10px; 
+        background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(12px);
+        border: 2px solid var(--primary); border-radius: 20px; padding: 15px; 
+        grid-template-columns: repeat(4, 1fr); gap: 10px; z-index: 100; max-height: 250px; overflow-y: auto;
+    }
+    .sticker-item { cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 5px; }
+    .sticker-item:hover { transform: scale(1.1); background: rgba(56, 189, 248, 0.2); }
+    .msg-media { max-width: 100%; border-radius: 10px; margin-top: 5px; }
+
+    .vip-only { display: none; }
+    #voiceBtn { width: 50px; height: 50px; border-radius: 50%; background: #334155; border: 2px solid var(--primary); color: var(--primary); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; flex-shrink: 0; }
+    #voiceBtn.recording { background: #f43f5e; color: white; animation: pulse 1s infinite; }
+    #voiceTimer { position: absolute; top: -25px; font-size: 0.8em; color: #f43f5e; font-weight: bold; }
+
+    .room-tag { background: rgba(56, 189, 248, 0.15); color: var(--primary); padding: 8px 16px; border-radius: 12px; font-size: 0.8em; font-weight: 800; letter-spacing: 1px; border: 1px solid rgba(56, 189, 248, 0.3); margin-bottom: 10px; display: inline-block; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+</style>
+</head>
+<body>
+
+<div id="msgPopup">💬 <span id="popupUser"></span>: <span id="popupText"></span></div>
+
+<div id="authScreen" class="screen active">
+    <div style="font-size: 3.5em; margin-bottom: 10px;">🌌</div>
+    <h2 id="authTitle" style="margin-top:0; font-size: 1.8em;">CREATE PLAYER</h2>
+    <p style="color: #94a3b8; margin-bottom: 30px; font-weight: 300;">Connect to the VIP Arena</p>
+    <input type="text" id="usernameInput" placeholder="Enter Username...">
+    <button id="authBtn">Enter Lobby</button>
+    <p id="authSwitch" style="color:#38bdf8; cursor:pointer; margin-top:20px; font-size:0.85em; font-weight:700; text-transform: uppercase; letter-spacing: 1px;">Switch to Login</p>
+</div>
+
+<div id="passScreen" class="screen">
+    <h2>Verify VIP</h2>
+    <p>Please enter the password for: <br><b id="pendingUser" style="color:#38bdf8;"></b></p>
+    <input type="password" id="passwordInput" placeholder="Enter Password...">
+    <button id="verifyBtn">Login to VIP</button>
+    <p onclick="showScreen('authScreen')" style="color:#f87171; cursor:pointer; margin-top:15px; font-size:0.8em;">← Cancel</p>
+</div>
+
+<div id="lobbyScreen" class="screen">
+    <h2 style="margin-top:0;">Game Lobby</h2>
+    <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 18px; margin-bottom: 25px; border: 1px solid var(--glass-border);">
+        <span style="color: #94a3b8; font-size: 0.75em; font-weight: 700;">AUTHENTICATED AS</span><br>
+        <b id="displayMyName" style="color:#38bdf8; font-size: 1.3em;"></b>
+    </div>
+
+    <p style="font-weight: 700; color: #94a3b8; font-size: 0.8em; margin-bottom: 5px;">SELECT GAME MODE</p>
+    <div class="mode-container">
+        <div class="mode-card selected" onclick="selectMode('tictactoe', this)">
+            <span class="mode-icon">❌</span>
+            <div><b>Tic Tac Toe</b><br><small>Classic 3x3 Battle</small></div>
+        </div>
+        <div class="mode-card" onclick="selectMode('rps', this)">
+            <span class="mode-icon">✂️</span>
+            <div><b>RPS War</b><br><small>Rock, Paper, Scissors</small></div>
+        </div>
+        <div class="mode-card" onclick="selectMode('dlx', this)">
+            <span class="mode-icon">⬛</span>
+            <div><b>Dots & Boxes</b><br><small>Strategic Territory</small></div>
+        </div>
+    </div>
+
+    <input type="text" id="roomInput" placeholder="Room Name (Optional)...">
+    <button id="joinRoomBtn">Start Match</button>
+    <p onclick="logout()" style="color:#f87171; cursor:pointer; margin-top:20px; font-size:0.8em; font-weight: 500;">Terminate Session</p>
+</div>
+
+<div id="gameScreen" class="container">
+    <div class="game-box">
+        <div class="room-tag">ROOM ID: <span id="displayRoomID">...</span></div>
+        <div id="status" style="font-size: 1.2em; font-weight: 700; margin-bottom: 10px; color: var(--primary);">Syncing...</div>
+        
+        <div id="board"></div>
+
+        <div id="dotsBoard"></div>
+
+        <div id="rpsArea" style="display:none; margin: 20px 0;">
+            <div id="rpsStatus" style="font-weight:bold; color:#38bdf8; margin-bottom: 10px;">RPS WAR</div>
+            <div style="display:flex; gap:10px; justify-content:center;">
+                <button onclick="sendRPS('🪨')" style="width:70px; height:70px; font-size:2em; padding:0;">🪨</button>
+                <button onclick="sendRPS('📜')" style="width:70px; height:70px; font-size:2em; padding:0;">📜</button>
+                <button onclick="sendRPS('✂️')" style="width:70px; height:70px; font-size:2em; padding:0;">✂️</button>
+            </div>
+            <div id="rpsResult" style="margin-top:15px; font-size:1.1em; color:#facc15; font-weight:bold;"></div>
+        </div>
+
+        <p id="playerLabel" style="color:#94a3b8; font-weight:bold; font-size:0.8em; margin: 15px 0;"></p>
+        <p id="spectatorNote" style="display:none; color:#facc15; font-size: 0.8em;">👀 You are spectating this match</p>
+
+        <button id="restartBtn">Request Restart 🥀</button>
+        <div id="qrcode" style="background:white; padding:8px; display:inline-block; border-radius:10px; margin-top:15px;"></div>
+        <br>
+        <button id="copyBtn" onclick="copyRoomLink()" style="width:auto; padding: 10px 20px; margin-top: 10px; background: #10b981; color:white;">🔗 Invite Link</button>
+        <br>
+        <button style="background:transparent; color:#f87171; border:1px solid #f87171; margin-top:20px; width:auto; font-size:0.75em; padding:5px 15px;" onclick="leaveRoom()">Exit to Lobby</button>
+    </div>
+
+    <div class="chat-box">
+        <h3 style="margin:0 0 15px 0; font-size: 1.1em;">Live Chat</h3>
+        <div id="chatMessages"></div>
+        <div id="stickerPanel"></div>
+        
+        <div style="display:flex; gap:8px; align-items:center; margin-top: 15px;">
+            <div id="stickerBtn" class="vip-only" onclick="toggleStickers()" style="cursor:pointer; font-size: 1.5em; background: rgba(255,255,255,0.05); width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid var(--glass-border);">⭐</div>
+            <input type="text" id="msgInput" placeholder="Message..." style="margin:0; flex:1;">
+            <button id="sendBtn" style="width:45px; padding:0; margin:0; height:48px; flex-shrink:0;">></button>
+            <div id="voiceBtn" class="vip-only">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+                <span id="voiceTimer"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- CONFIG & FIREBASE ---
+const firebaseConfig = {
+    apiKey: "AIzaSyAgeIii3qlyI_13ORnYLm34f5hO8vXLTno",
+    authDomain: "tic-tac-toe-dda98.firebaseapp.com",
+    databaseURL: "https://tic-tac-toe-dda98-default-rtdb.firebaseio.com",
+    projectId: "tic-tac-toe-dda98"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const VIP_USERS = ["aarya", "winxfae", "avik", "murphx"];
+const VIP_PASS = "admin123"; 
+const VIP_STICKERS = [
+    "🐱", "🐾", "🐈", "😻", "🌈", "✨", "🍭", "🎀",
+    "https://media.tenor.com/GJUz8DogSTUAAAAi/cute-cat-cutie.gif",
+    "https://media1.tenor.com/m/ZsHIM2wZjmQAAAAd/drooling-kitty-drooling.gif",
+    "https://media.tenor.com/P2l5BjshgRIAAAAi/cat-meme-gato.gif",
+    "https://media1.tenor.com/m/4n4cErvEq_sAAAAd/yapapa-cat.gif",
+    "https://media1.tenor.com/m/rqa4jyrjIsIAAAAC/bingobongo-kitty.gif",
+    "https://media1.tenor.com/m/4HJ2V6mgJVQAAAAC/cute-cats-dancing.gif",
+    "https://media.tenor.com/lGdck5vg7CYAAAAi/pisica-cat.gif",
+    "https://media1.tenor.com/m/Xj0I2vMUoOIAAAAd/qazqaz.gif"
+];
+const beep = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
+
+let currentUser = JSON.parse(localStorage.getItem('ttt_player')) || null;
+let isLoginMode = false, gameRef, chatRef, presenceRef, mySymbol = "Spectator", turn, gameOver = false, currentRoomID = "";
+let mediaRecorder, audioChunks = [], timerInterval, seconds = 0, pendingName = "";
+let selectedGameMode = 'tictactoe';
+
+// --- INIT BOARD (TTT) ---
+const boardDiv = document.getElementById('board');
+for(let i=0; i<9; i++) {
+    let c = document.createElement('div'); 
+    c.className='cell';
+    c.onclick = () => handleMove(i);
+    boardDiv.appendChild(c);
+}
+
+// --- DOTS & BOXES INIT ---
+const dotsBoard = document.getElementById('dotsBoard');
+const ROWS = 5; 
+const COLS = 6;
+const CELL_SIZE = 50;
+dotsBoard.style.width = (COLS - 1) * CELL_SIZE + 'px';
+dotsBoard.style.height = (ROWS - 1) * CELL_SIZE + 'px';
+
+function createDotsAndBoxesUI() {
+    dotsBoard.innerHTML = "";
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            let dot = document.createElement('div');
+            dot.className = 'dot';
+            dot.style.left = (c * CELL_SIZE - 5) + 'px';
+            dot.style.top = (r * CELL_SIZE - 5) + 'px';
+            dotsBoard.appendChild(dot);
+        }
+    }
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 1; c++) { createLineUI(c, r, 'h'); }
+    }
+    for (let r = 0; r < ROWS - 1; r++) {
+        for (let c = 0; c < COLS; c++) { createLineUI(c, r, 'v'); }
+    }
+}
+
+function createLineUI(c, r, type) {
+    let line = document.createElement('div');
+    line.className = 'line';
+    const id = `${type}_${r}_${c}`;
+    line.id = id;
+    if (type === 'h') {
+        line.style.width = (CELL_SIZE - 10) + 'px';
+        line.style.height = '6px';
+        line.style.left = (c * CELL_SIZE + 5) + 'px';
+        line.style.top = (r * CELL_SIZE - 3) + 'px';
+    } else {
+        line.style.width = '6px';
+        line.style.height = (CELL_SIZE - 10) + 'px';
+        line.style.left = (c * CELL_SIZE - 3) + 'px';
+        line.style.top = (r * CELL_SIZE + 5) + 'px';
+    }
+    line.onclick = () => handleDotsMove(id);
+    dotsBoard.appendChild(line);
+}
+
+function handleDotsMove(lineId) {
+    if (mySymbol === "Spectator" || gameOver || turn !== mySymbol) return;
+    gameRef.once('value', s => {
+        const d = s.val();
+        if (d.mode !== 'dlx' || d.lines && d.lines[lineId]) return;
+        if (!d.lines) d.lines = {};
+        d.lines[lineId] = mySymbol;
+        let boxMade = false;
+        if (!d.boxes) d.boxes = {};
+        for(let r=0; r<ROWS-1; r++) {
+            for(let c=0; c<COLS-1; c++) {
+                const boxId = `box_${r}_${c}`;
+                if (!d.boxes[boxId]) {
+                    const top = `h_${r}_${c}`, bottom = `h_${r+1}_${c}`, left = `v_${r}_${c}`, right = `v_${r}_${c+1}`;
+                    if (d.lines[top] && d.lines[bottom] && d.lines[left] && d.lines[right]) {
+                        d.boxes[boxId] = mySymbol;
+                        boxMade = true;
+                    }
+                }
+            }
+        }
+        if (!boxMade) d.turn = (mySymbol === 'X' ? 'O' : 'X');
+        gameRef.update(d);
+    });
+}
+
+// --- CORE FUNCTIONS ---
+function showScreen(id) {
+    document.querySelectorAll('.screen, .container').forEach(s => s.classList.remove('active'));
+    const el = document.getElementById(id);
+    if(el) el.classList.add('active');
+}
+
+function selectMode(mode, el) {
+    selectedGameMode = mode;
+    document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+}
+
+function leaveRoom() {
+    if (presenceRef && mySymbol !== "Spectator") { presenceRef.child(mySymbol).remove(); }
+    if (gameRef) gameRef.off();
+    if (chatRef) chatRef.off();
+    showScreen('lobbyScreen');
+    window.history.pushState({}, '', window.location.pathname);
+}
+
+function handleAdmin(cmd) {
+    if (cmd === "/ttt") {
+        gameRef.set({ mode: 'tictactoe', board: Array(9).fill(""), turn: 'X' });
+        chatRef.push({ user: "SYSTEM", text: "Admin set mode to Tic Tac Toe", type: 'text' });
+    }
+    if (cmd === "/dlx") {
+        gameRef.set({ mode: 'dlx', lines: {}, boxes: {}, turn: 'X' });
+        chatRef.push({ user: "SYSTEM", text: "Admin set mode to Dots and Boxes", type: 'text' });
+    }
+    if (cmd === "/rps") {
+        gameRef.update({ mode: 'rps', pX: null, pO: null });
+        chatRef.push({ user: "SYSTEM", text: "Admin set mode to RPS", type: 'text' });
+    }
+    if (cmd.startsWith("/kick")) {
+        const target = cmd.split(" ")[1];
+        if (target === 'x' || target === 'o') {
+            db.ref('presence/' + currentRoomID + '/' + target.toUpperCase()).remove();
+            chatRef.push({ user: "SYSTEM", text: `Player ${target.toUpperCase()} was kicked by Admin.`, type: 'text' });
+        }
+    }
+    if (cmd === "/reset") gameRef.update({ board: Array(9).fill(""), turn: 'X', restartX: null, restartO: null, pX: null, pO: null, lines: {}, boxes: {} });
+    if (cmd === "/win x") gameRef.update({ board: ["X","X","X","O","O","","","",""], turn: 'O' });
+    if (cmd === "/win o") gameRef.update({ board: ["O","O","O","X","X","","","",""], turn: 'X' });
+    if (cmd === "/nuke") gameRef.update({ board: Array(9).fill("M"), turn: 'NONE' });
+}
+
+// --- AUTH LOGIC ---
+document.getElementById('authSwitch').onclick = () => {
+    isLoginMode = !isLoginMode;
+    document.getElementById('authTitle').innerText = isLoginMode ? "Login Player" : "Create Player";
+    document.getElementById('authBtn').innerText = isLoginMode ? "Login" : "Enter Lobby";
+    document.getElementById('authSwitch').innerText = isLoginMode ? "Switch to Register" : "Switch to Login";
+};
+
+document.getElementById('authBtn').onclick = () => {
+    const name = document.getElementById('usernameInput').value.trim().toLowerCase();
+    if (!name) return;
+    if (VIP_USERS.includes(name)) {
+        pendingName = name;
+        document.getElementById('pendingUser').innerText = name;
+        showScreen('passScreen');
+        return;
+    }
+    proceedAuth(name);
+};
+
+document.getElementById('verifyBtn').onclick = () => {
+    if (document.getElementById('passwordInput').value === VIP_PASS) {
+        proceedAuth(pendingName);
+    } else alert("Wrong Password!");
+};
+
+function proceedAuth(name) {
+    const u = { name, uid: 'id-' + Math.random().toString(36).substr(2, 5) };
+    db.ref('users/' + name).once('value', s => {
+        if (isLoginMode) { s.exists() ? login(s.val()) : alert("User not found"); } 
+        else { db.ref('users/' + name).set(u).then(() => login(u)); }
+    });
+}
+
+function login(user) {
+    currentUser = user; 
+    localStorage.setItem('ttt_player', JSON.stringify(user));
+    document.getElementById('displayMyName').innerText = user.name;
+    if(VIP_USERS.includes(user.name.toLowerCase())) {
+        document.querySelectorAll('.vip-only').forEach(el => el.style.display = 'flex');
+        initStickers();
+    }
+    showScreen('lobbyScreen');
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('room')) startGame(params.get('room'));
+}
+
+function logout() { localStorage.removeItem('ttt_player'); location.reload(); }
+
+// --- GAME START ---
+document.getElementById('joinRoomBtn').onclick = () => {
+    let r = document.getElementById('roomInput').value.trim().toLowerCase() || Math.random().toString(36).substr(2, 5);
+    startGame(r, true);
+};
+
+function startGame(roomId, isNew = false) {
+    currentRoomID = roomId;
+    showScreen('gameScreen');
+    document.getElementById('displayRoomID').innerText = roomId.toUpperCase();
+    gameRef = db.ref('games/' + roomId);
+    chatRef = db.ref('chats/' + roomId);
+    presenceRef = db.ref('presence/' + roomId);
+
+    const qrDiv = document.getElementById("qrcode");
+    qrDiv.innerHTML = "";
+    new QRCode(qrDiv, { text: window.location.href.split('?')[0] + '?room=' + roomId, width: 80, height: 80 });
+
+    if (isNew) {
+        gameRef.once('value', s => {
+            if (!s.exists()) {
+                if (selectedGameMode === 'dlx') gameRef.set({ mode: 'dlx', lines: {}, boxes: {}, turn: 'X' });
+                else if (selectedGameMode === 'rps') gameRef.set({ mode: 'rps', pX: null, pO: null, turn: 'X' });
+                else gameRef.set({ mode: 'tictactoe', board: Array(9).fill(""), turn: 'X' });
+            }
+        });
+    }
+
+    gameRef.on('value', snap => {
+        const d = snap.val();
+        if (!d) return;
+        turn = d.turn;
+        if (d.mode === 'rps') {
+            boardDiv.style.display = 'none'; dotsBoard.style.display = 'none'; document.getElementById('rpsArea').style.display = 'block';
+            if (d.pX && d.pO) document.getElementById('rpsResult').innerHTML = `X: ${d.pX} | O: ${d.pO}`;
+            else document.getElementById('rpsResult').innerText = d['p'+mySymbol] ? "Waiting for opponent..." : "Pick your move!";
+        } 
+        else if (d.mode === 'dlx') {
+            boardDiv.style.display = 'none'; document.getElementById('rpsArea').style.display = 'none'; dotsBoard.style.display = 'block';
+            if (!dotsBoard.hasChildNodes()) createDotsAndBoxesUI();
+            document.querySelectorAll('.line').forEach(l => {
+                l.className = 'line';
+                if (d.lines && d.lines[l.id]) l.classList.add('active-' + d.lines[l.id].toLowerCase());
+            });
+            document.querySelectorAll('.box-owner').forEach(b => b.remove());
+            let xScore = 0, oScore = 0;
+            if (d.boxes) {
+                Object.entries(d.boxes).forEach(([id, owner]) => {
+                    if(owner === 'X') xScore++; else oScore++;
+                    const parts = id.split('_');
+                    let box = document.createElement('div');
+                    box.className = `box-owner ${owner.toLowerCase()}-fill`;
+                    box.innerText = owner;
+                    box.style.width = (CELL_SIZE - 10) + 'px'; box.style.height = (CELL_SIZE - 10) + 'px';
+                    box.style.left = (parts[2] * CELL_SIZE + 5) + 'px'; box.style.top = (parts[1] * CELL_SIZE + 5) + 'px';
+                    dotsBoard.appendChild(box);
+                });
+            }
+            const totalBoxes = (ROWS-1) * (COLS-1);
+            if ((xScore + oScore) === totalBoxes) {
+                const winner = xScore > oScore ? "X" : (oScore > xScore ? "O" : "Tie");
+                document.getElementById('status').innerText = winner === "Tie" ? "Draw!" : winner + " Wins!";
+                gameOver = true;
+            } else {
+                document.getElementById('status').innerText = turn === mySymbol ? `Your Turn (X:${xScore} O:${oScore})` : `${turn}'s Turn (X:${xScore} O:${oScore})`;
+                gameOver = false;
+            }
+        }
+        else {
+            boardDiv.style.display = 'grid'; dotsBoard.style.display = 'none'; document.getElementById('rpsArea').style.display = 'none';
+            const cells = document.querySelectorAll('.cell');
+            d.board.forEach((v, i) => {
+                cells[i].innerText = (v === "M" ? "☢️" : v);
+                cells[i].className = 'cell ' + (v ? v.toLowerCase()+'-color' : '');
+            });
+            const win = calculateWin(d.board);
+            if(win) {
+                document.getElementById('status').innerText = win === "MURPHX" ? "☢️ MURPHX DOMINATES ☢️" : (win === "Tie" ? "Draw!" : win + " Wins!");
+                gameOver = true;
+            } else {
+                document.getElementById('status').innerText = turn === mySymbol ? "Your Turn" : turn + "'s Turn";
+                gameOver = false;
+            }
+        }
+        handleRestartLogic(d);
+    });
+
+    presenceRef.on('value', snap => {
+        const p = snap.val() || {};
+        if (mySymbol !== "Spectator" && p[mySymbol] !== currentUser.name) { alert("You have been kicked!"); mySymbol = "Spectator"; }
+        if (mySymbol === "Spectator") {
+            if (!p.X) { presenceRef.child('X').set(currentUser.name); mySymbol = "X"; } 
+            else if (!p.O && p.X !== currentUser.name) { presenceRef.child('O').set(currentUser.name); mySymbol = "O"; }
+        }
+        document.getElementById('spectatorNote').style.display = (mySymbol === "Spectator" ? "block" : "none");
+        document.getElementById('playerLabel').innerText = "YOU ARE: " + mySymbol;
+        if (mySymbol !== "Spectator") presenceRef.child(mySymbol).onDisconnect().remove();
+    });
+
+    chatRef.off();
+    chatRef.limitToLast(15).on('child_added', snap => {
+        const m = snap.val();
+        const msgList = document.getElementById('chatMessages');
+        const p = document.createElement('p');
+        if (m.user === currentUser.name) p.classList.add('me');
+        if (m.type === 'audio') p.innerHTML = `<b>${m.user}:</b><br><audio controls src="${m.text}" style="width:200px"></audio>`;
+        else if (m.type === 'sticker') {
+            const isLink = m.text.startsWith('http');
+            p.innerHTML = `<b>${m.user}:</b><br>` + (isLink ? `<img src="${m.text}" class="msg-media">` : `<span style="font-size:3em;">${m.text}</span>`);
+        } else p.innerHTML = `<b>${m.user}:</b> ${m.text}`;
+        msgList.appendChild(p);
+        msgList.scrollTop = msgList.scrollHeight;
+        if (m.user !== currentUser.name) showPopup(m.user, m.type === 'text' ? m.text : "Sent media 🖼️");
+    });
+}
+
+function sendMediaMessage(content, type) {
+    chatRef.push({ user: currentUser.name, type: type, text: content, timestamp: Date.now() });
+    if(type === 'sticker') toggleStickers();
+}
+
+function sendMessage() {
+    const val = document.getElementById('msgInput').value.trim();
+    if (!val) return;
+    const isAdmin = currentUser.name === "murphx" || currentUser.name === "winxfae";
+    if (isAdmin && val.startsWith("/")) handleAdmin(val.toLowerCase());
+    else chatRef.push({ user: currentUser.name, type: 'text', text: val, timestamp: Date.now() });
+    document.getElementById('msgInput').value = '';
+}
+
+document.getElementById('sendBtn').onclick = sendMessage;
+document.getElementById('msgInput').onkeypress = (e) => { if(e.key === "Enter") sendMessage(); };
+
+function initStickers() {
+    const p = document.getElementById('stickerPanel'); p.innerHTML = "";
+    VIP_STICKERS.forEach(s => {
+        const div = document.createElement('div'); div.className = 'sticker-item';
+        div.innerHTML = s.startsWith('http') ? `<img src="${s}" style="width:100%; border-radius:5px;">` : `<span>${s}</span>`;
+        div.onclick = () => sendMediaMessage(s, 'sticker'); p.appendChild(div);
+    });
+}
+
+function toggleStickers() {
+    const p = document.getElementById('stickerPanel');
+    p.style.display = p.style.display === 'grid' ? 'none' : 'grid';
+}
+
+const vBtn = document.getElementById('voiceBtn');
+vBtn.onmousedown = vBtn.ontouchstart = async (e) => {
+    e.preventDefault();
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream); audioChunks = []; seconds = 0;
+        timerInterval = setInterval(() => { seconds++; document.getElementById('voiceTimer').innerText = seconds + "s"; }, 1000);
+        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            clearInterval(timerInterval); document.getElementById('voiceTimer').innerText = "";
+            const reader = new FileReader();
+            reader.readAsDataURL(new Blob(audioChunks, { type: 'audio/webm' }));
+            reader.onloadend = () => sendMediaMessage(reader.result, 'audio');
+        };
+        mediaRecorder.start(); vBtn.classList.add('recording');
+    } catch(err) { alert("Mic required."); }
+};
+vBtn.onmouseup = vBtn.onmouseleave = vBtn.ontouchend = () => {
+    if(mediaRecorder && mediaRecorder.state === "recording") { mediaRecorder.stop(); vBtn.classList.remove('recording'); }
+};
+
+function handleMove(i) {
+    if (mySymbol === "Spectator" || gameOver || turn !== mySymbol) return;
+    gameRef.once('value', s => {
+        const d = s.val();
+        if (d.mode === 'rps' || d.mode === 'dlx' || d.board[i]) return;
+        d.board[i] = mySymbol; d.turn = mySymbol === 'X' ? 'O' : 'X';
+        gameRef.update(d);
+    });
+}
+
+function sendRPS(move) {
+    if (mySymbol !== "Spectator") {
+        let upd = {}; upd['p' + mySymbol] = move;
+        gameRef.update(upd);
+    }
+}
+
+function handleRestartLogic(d) {
+    const btn = document.getElementById('restartBtn');
+    if (mySymbol === "Spectator") { btn.style.display = 'none'; return; }
+    btn.style.display = 'block';
+    const opp = mySymbol === 'X' ? 'O' : 'X';
+    if (d.restartX && d.restartO) {
+        if (d.mode === 'dlx') gameRef.update({ lines: {}, boxes: {}, turn: 'X', restartX: null, restartO: null });
+        else gameRef.update({ board: Array(9).fill(""), turn: 'X', restartX: null, restartO: null, pX: null, pO: null, mode: d.mode });
+    } else if (d['restart' + mySymbol]) { btn.innerText = "Waiting..."; btn.disabled = true; } 
+    else if (d['restart' + opp]) { btn.innerText = "Accept Restart? 🔄"; btn.disabled = false; btn.style.background = "#f59e0b"; } 
+    else { btn.innerText = "Request Restart 🥀"; btn.disabled = false; btn.style.background = "#334155"; }
+}
+
+document.getElementById('restartBtn').onclick = () => {
+    let upd = {}; upd['restart' + mySymbol] = true;
+    gameRef.update(upd);
+};
+
+function calculateWin(s) {
+    if(!s) return null;
+    const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+    for (let [a, b, c] of lines) { if (s[a] && s[a] === s[b] && s[a] === s[c]) return s[a]; }
+    if (s.every(cell => cell === "M")) return "MURPHX";
+    return s.includes("") ? null : "Tie";
+}
+
+function showPopup(user, text) {
+    const p = document.getElementById('msgPopup');
+    document.getElementById('popupUser').innerText = user;
+    document.getElementById('popupText').innerText = text;
+    beep.play().catch(()=>{});
+    p.classList.add('show');
+    setTimeout(() => p.classList.remove('show'), 3000);
+}
+
+function copyRoomLink() {
+    const link = window.location.href.split('?')[0] + '?room=' + currentRoomID;
+    navigator.clipboard.writeText(link).then(() => alert("Copied!"));
+}
+
+window.onload = () => { if (currentUser) login(currentUser); };
+</script>
+</body>
+</html>
