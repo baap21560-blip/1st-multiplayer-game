@@ -142,7 +142,7 @@
     <p style="color: #94a3b8; margin-bottom: 30px; font-weight: 300;">Connect to the VIP Arena</p>
     <input type="text" id="usernameInput" placeholder="Enter Username...">
     <button id="authBtn">Enter Lobby</button>
-    <p id="authSwitch" style="color:#38bdf8; cursor:pointer; margin-top:20px; font-size:0.85em; font-weight:700; text-transform: uppercase; letter-spacing: 1px;">Switch to Login</p>
+    <p id="authSwitch" style="color:#38bdf8; cursor:pointer; margin-top:20px; font-size:0.85em; font-weight:700; text-transform: uppercase; letter-spacing: 1px;"></p>
 </div>
 
 <div id="passScreen" class="screen">
@@ -242,15 +242,54 @@ const db = firebase.database();
 const VIP_USERS = ["aarya", "winxfae", "avik", "murphx"];
 const VIP_PASS = "admin123"; 
 const VIP_STICKERS = [
-    "🐱", "🐾", "🐈", "😻", "🌈", "✨", "🍭", "🎀",
+    
+    "https://media.tenor.com/pFHB6UkXAjgAAAAi/ascendance-of-a-bookworm-honzuki-no-gekokujou.gif",
+    
+    "https://media1.tenor.com/m/Kr6jKur1_DYAAAAC/cat.gif",
+    
+    "https://media1.tenor.com/m/rTmn7XLBrNQAAAAC/anime-smug.gif",
+    
+    "https://media1.tenor.com/m/ooVNwwEUb8oAAAAd/my-dress-up-darling-my-dress-up-darling-s2.gif",
+    
+    "https://media1.tenor.com/m/XhZG-B3uQ6gAAAAd/gay.gif",
+    
+    "https://media1.tenor.com/m/skxSDGD6b8wAAAAC/anime-apothecary-diaries.gif",
+    
+    "https://media1.tenor.com/m/21LeAZoJ-X4AAAAC/anime-anime-girl.gif",
+    
+    "https://media1.tenor.com/m/1tuKwrjR9VsAAAAC/anime-boy.gif",
+    
+    "https://media.tenor.com/8vdNBXkIxl4AAAAj/katsuyo.gif",
+    
+    "https://media1.tenor.com/m/4fiwgvKSN5cAAAAC/beluga-beluga-cat-meme.gif",
+    
+    "https://media.tenor.com/8fwLxQlQJhIAAAAj/gojo-gojo-satoru.gif",
+    
+    "https://media1.tenor.com/m/D_ZoPtwrx9EAAAAC/hao-record-of-ragnarok.gif",
+    
+    "https://media1.tenor.com/m/Ti6AFXIRrGsAAAAC/meme-funny.gif",
+    
+    "https://media1.tenor.com/m/14b3oQe1uw0AAAAC/cat-crying-cat.gif",
+    
+    "https://media.tenor.com/Db9euJyQnbUAAAAi/chat-pouce.gif",
+    
+    "https://media.tenor.com/hCnHNfm23rgAAAAi/suho-cat.gif",
+   
     "https://media.tenor.com/GJUz8DogSTUAAAAi/cute-cat-cutie.gif",
+   
     "https://media1.tenor.com/m/ZsHIM2wZjmQAAAAd/drooling-kitty-drooling.gif",
+   
     "https://media.tenor.com/P2l5BjshgRIAAAAi/cat-meme-gato.gif",
+    
     "https://media1.tenor.com/m/4n4cErvEq_sAAAAd/yapapa-cat.gif",
+   
     "https://media1.tenor.com/m/rqa4jyrjIsIAAAAC/bingobongo-kitty.gif",
+  
     "https://media1.tenor.com/m/4HJ2V6mgJVQAAAAC/cute-cats-dancing.gif",
+    
     "https://media.tenor.com/lGdck5vg7CYAAAAi/pisica-cat.gif",
-    "https://media1.tenor.com/m/Xj0I2vMUoOIAAAAd/qazqaz.gif"
+    
+    "https://media1.tenor.com/m/Xj0I2vMUoOIAAAAd/qazqaz.gif""
 ];
 const beep = new Audio("https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3");
 
@@ -365,15 +404,15 @@ function leaveRoom() {
 function handleAdmin(cmd) {
     if (cmd === "/ttt") {
         gameRef.set({ mode: 'tictactoe', board: Array(9).fill(""), turn: 'X' });
-        chatRef.push({ user: "SYSTEM", text: "Admin set mode to Tic Tac Toe", type: 'text' });
+        chatRef.push({ user: "SYSTEM", text: "Mode TTT", type: 'text' });
     }
     if (cmd === "/dlx") {
         gameRef.set({ mode: 'dlx', lines: {}, boxes: {}, turn: 'X' });
-        chatRef.push({ user: "SYSTEM", text: "Admin set mode to Dots and Boxes", type: 'text' });
+        chatRef.push({ user: "SYSTEM", text: "Mode Dot & Boxes", type: 'text' });
     }
     if (cmd === "/rps") {
         gameRef.update({ mode: 'rps', pX: null, pO: null });
-        chatRef.push({ user: "SYSTEM", text: "Admin set mode to RPS", type: 'text' });
+        chatRef.push({ user: "SYSTEM", text: "Mode RPS", type: 'text' });
     }
     if (cmd.startsWith("/kick")) {
         const target = cmd.split(" ")[1];
@@ -393,7 +432,7 @@ document.getElementById('authSwitch').onclick = () => {
     isLoginMode = !isLoginMode;
     document.getElementById('authTitle').innerText = isLoginMode ? "Login Player" : "Create Player";
     document.getElementById('authBtn').innerText = isLoginMode ? "Login" : "Enter Lobby";
-    document.getElementById('authSwitch').innerText = isLoginMode ? "Switch to Register" : "Switch to Login";
+    document.getElementById('authSwitch').innerText = isLoginMode ? "Switch to Register" :
 };
 
 document.getElementById('authBtn').onclick = () => {
@@ -549,7 +588,7 @@ function startGame(roomId, isNew = false) {
         } else p.innerHTML = `<b>${m.user}:</b> ${m.text}`;
         msgList.appendChild(p);
         msgList.scrollTop = msgList.scrollHeight;
-        if (m.user !== currentUser.name) showPopup(m.user, m.type === 'text' ? m.text : "Sent media 🖼️");
+        if (m.user !== currentUser.name) showPopup(m.user, m.type === 'text' ? m.text : "media 🖼");
     });
 }
 
@@ -665,5 +704,4 @@ function copyRoomLink() {
 window.onload = () => { if (currentUser) login(currentUser); };
 </script>
 </body>
-
-</html>
+    </html>
