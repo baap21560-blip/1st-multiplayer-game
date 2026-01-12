@@ -155,6 +155,13 @@
 
 <div id="lobbyScreen" class="screen">
     <h2 style="margin-top:0;">Game Lobby</h2>
+
+<div style="margin-top: 25px; text-align: left;">
+    <p style="font-weight: 700; color: #94a3b8; font-size: 0.8em; margin-bottom: 10px; text-transform: uppercase;">Active Players</p>
+    <div id="onlineList" style="background: rgba(0,0,0,0.2); border-radius: 15px; max-height: 200px; overflow-y: auto; border: 1px solid var(--glass-border);">
+        </div>
+</div>
+
     <div style="background: rgba(255,255,255,0.03); padding: 15px; border-radius: 18px; margin-bottom: 25px; border: 1px solid var(--glass-border);">
         <span style="color: #94a3b8; font-size: 0.75em; font-weight: 700;">AUTHENTICATED AS</span><br>
         <b id="displayMyName" style="color:#38bdf8; font-size: 1.3em;"></b>
@@ -297,6 +304,7 @@ let currentUser = JSON.parse(localStorage.getItem('ttt_player')) || null;
 let isLoginMode = false, gameRef, chatRef, presenceRef, mySymbol = "Spectator", turn, gameOver = false, currentRoomID = "";
 let mediaRecorder, audioChunks = [], timerInterval, seconds = 0, pendingName = "";
 let selectedGameMode = 'tictactoe';
+let lobbyRef;
 
 // --- INIT BOARD (TTT) ---
 const boardDiv = document.getElementById('board');
@@ -394,9 +402,19 @@ function selectMode(mode, el) {
 }
 
 function leaveRoom() {
-    if (presenceRef && mySymbol !== "Spectator") { presenceRef.child(mySymbol).remove(); }
+    // FIX: Clear status first so we don't trigger the "kicked" alert on ourselves
+    let oldSymbol = mySymbol;
+    mySymbol = "Spectator"; 
+    
+    if (presenceRef && oldSymbol !== "Spectator") { 
+        presenceRef.child(oldSymbol).remove(); 
+    }
+    
     if (gameRef) gameRef.off();
     if (chatRef) chatRef.off();
+    
+    if (lobbyRef) lobbyRef.update({ status: 'lobby' });
+
     showScreen('lobbyScreen');
     window.history.pushState({}, '', window.location.pathname);
 }
@@ -465,6 +483,19 @@ function login(user) {
     currentUser = user; 
     localStorage.setItem('ttt_player', JSON.stringify(user));
     document.getElementById('displayMyName').innerText = user.name;
+// --- ADD THIS START ---
+lobbyRef = db.ref('online_players/' + user.uid);
+lobbyRef.set({
+    name: user.name,
+    uid: user.uid,
+    status: 'lobby',
+    lastSeen: Date.now()
+});
+lobbyRef.onDisconnect().remove();
+
+listenForOnlinePlayers();
+listenForInvites();
+// --- ADD THIS END ---
     if(VIP_USERS.includes(user.name.toLowerCase())) {
         document.querySelectorAll('.vip-only').forEach(el => el.style.display = 'flex');
         initStickers();
@@ -484,6 +515,10 @@ document.getElementById('joinRoomBtn').onclick = () => {
 
 function startGame(roomId, isNew = false) {
     currentRoomID = roomId;
+
+    // ADD THIS LINE HERE:
+    if (lobbyRef) lobbyRef.update({ status: 'game' }); 
+
     showScreen('gameScreen');
     document.getElementById('displayRoomID').innerText = roomId.toUpperCase();
     gameRef = db.ref('games/' + roomId);
@@ -563,17 +598,32 @@ function startGame(roomId, isNew = false) {
         handleRestartLogic(d);
     });
 
-    presenceRef.on('value', snap => {
-        const p = snap.val() || {};
-        if (mySymbol !== "Spectator" && p[mySymbol] !== currentUser.name) { alert("You have been kicked!"); mySymbol = "Spectator"; }
-        if (mySymbol === "Spectator") {
-            if (!p.X) { presenceRef.child('X').set(currentUser.name); mySymbol = "X"; } 
-            else if (!p.O && p.X !== currentUser.name) { presenceRef.child('O').set(currentUser.name); mySymbol = "O"; }
+presenceRef.on('value', snap => {
+    const p = snap.val() || {};
+    
+    // FIX: Only show kicked alert if you were actually playing AND someone else took your spot
+    if (mySymbol !== "Spectator") {
+        if (p[mySymbol] && p[mySymbol] !== currentUser.name) {
+            alert("You have been kicked!");
+            mySymbol = "Spectator";
         }
-        document.getElementById('spectatorNote').style.display = (mySymbol === "Spectator" ? "block" : "none");
-        document.getElementById('playerLabel').innerText = "YOU ARE: " + mySymbol;
-        if (mySymbol !== "Spectator") presenceRef.child(mySymbol).onDisconnect().remove();
-    });
+    }
+
+    if (mySymbol === "Spectator") {
+        if (!p.X) { 
+            presenceRef.child('X').set(currentUser.name); 
+            mySymbol = "X"; 
+        } 
+        else if (!p.O && p.X !== currentUser.name) { 
+            presenceRef.child('O').set(currentUser.name); 
+            mySymbol = "O"; 
+        }
+    }
+    
+    document.getElementById('spectatorNote').style.display = (mySymbol === "Spectator" ? "block" : "none");
+    document.getElementById('playerLabel').innerText = "YOU ARE: " + mySymbol;
+    if (mySymbol !== "Spectator") presenceRef.child(mySymbol).onDisconnect().remove();
+});
 
     chatRef.off();
     chatRef.limitToLast(15).on('child_added', snap => {
@@ -702,8 +752,121 @@ function copyRoomLink() {
 }
 
 window.onload = () => { if (currentUser) login(currentUser); };
+
+function listenForOnlinePlayers() {
+    db.ref('online_players').on('value', snap => {
+        const list = document.getElementById('onlineList');
+        list.innerHTML = "";
+        const players = snap.val() || {};
+        
+        Object.values(players).forEach(p => {
+            if (p.uid === currentUser.uid) return; 
+            
+            const isBusy = (p.status === 'game');
+            // Check if the player is in the VIP_USERS list
+            const isAdmin = VIP_USERS.includes(p.name.toLowerCase());
+
+            const div = document.createElement('div');
+            div.style = "padding: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05);";
+            
+            div.innerHTML = `
+                <div style="display: flex; align-items: center;">
+                    <span style="color: ${isBusy ? '#f87171' : '#4ade80'}; font-size: 1.2em; line-height: 1;">●</span>
+                    <div style="margin-left: 10px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-weight: 500; color: white;">${p.name}</span>
+                            ${isAdmin ? `<span style="background: linear-gradient(45deg, #facc15, #eab308); color: #000; font-size: 0.6em; padding: 2px 6px; border-radius: 4px; font-weight: 900; text-transform: uppercase;">⭐ ADMIN</span>` : ''}
+                        </div>
+                        <div style="font-size: 0.7em; color: ${isBusy ? '#f87171' : '#94a3b8'}">
+                            ${isBusy ? 'In a Match' : 'Available'}
+                        </div>
+                    </div>
+                </div>
+                <button onclick="sendInvite('${p.uid}', '${p.name}')" 
+                        ${isBusy ? 'disabled' : ''} 
+                        style="width: auto; padding: 6px 15px; font-size: 0.75em; margin: 0; 
+                        background: ${isBusy ? '#334155' : 'var(--primary)'}; 
+                        opacity: ${isBusy ? '0.5' : '1'};
+                        cursor: ${isBusy ? 'not-allowed' : 'pointer'};">
+                    INV
+                </button>
+            `;
+            list.appendChild(div);
+        });
+        
+        if (list.innerHTML === "") {
+            list.innerHTML = "<p style='padding:20px; color:#64748b; font-size:0.8em; text-align:center;'>Waiting for players to join...</p>";
+        }
+    });
+}
+
+function sendInvite(targetUid, targetName) {
+    // 1. Determine the room ID (uses your name-room as a default)
+    const roomId = currentRoomID || (currentUser.name + "-room").replace(/\s/g, '');
+    
+    // 2. Send the invitation data to the target player
+    db.ref('invites/' + targetUid).set({
+        from: currentUser.name,
+        fromUid: currentUser.uid, // Add this to track who to notify back
+        room: roomId,
+        time: Date.now()
+    });
+    
+    showPopup("SYSTEM", "Invite sent to " + targetName + ". Waiting...");
+
+    // 3. Wait for a response from the target player
+    db.ref('invite_responses/' + currentUser.uid).on('value', snap => {
+        const res = snap.val();
+        if (res && res.time > Date.now() - 10000) {
+            db.ref('invite_responses/' + currentUser.uid).remove(); // Clear response
+            db.ref('invite_responses/' + currentUser.uid).off(); // Stop listening
+            
+            if (res.accepted) {
+                showPopup("SYSTEM", targetName + " accepted!");
+                startGame(roomId, true); 
+            } else {
+                showPopup("SYSTEM", targetName + " rejected your invite. ❌");
+            }
+        }
+    });
+}
+
+function listenForInvites() {
+    db.ref('invites/' + currentUser.uid).on('value', snap => {
+        const inv = snap.val();
+        if (inv && inv.time > Date.now() - 30000) { 
+            const inviteBox = document.createElement('div');
+            inviteBox.style = "position:fixed; bottom:20px; right:20px; background:var(--glass); backdrop-filter:blur(20px); border:2px solid var(--primary); padding:20px; border-radius:20px; z-index:10000; box-shadow:0 10px 40px rgba(0,0,0,0.5); animation: fadeIn 0.5s ease;";
+            inviteBox.innerHTML = `
+                <div style="margin-bottom:15px;">
+                    <b style="color:var(--primary)">GAME INVITE!</b><br>
+                    <span style="font-size:0.9em">${inv.from} wants to play.</span>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button id="acceptInv" style="background:#10b981; padding:8px; font-size:0.8em; color:white;">ACCEPT</button>
+                    <button id="declineInv" style="background:#f87171; padding:8px; font-size:0.8em; color:white;">DECLINE</button>
+                </div>
+            `;
+            document.body.appendChild(inviteBox);
+            beep.play().catch(()=>{});
+
+            // HANDLE ACCEPT
+            document.getElementById('acceptInv').onclick = () => {
+                db.ref('invite_responses/' + inv.fromUid).set({ accepted: true, time: Date.now() });
+                db.ref('invites/' + currentUser.uid).remove();
+                inviteBox.remove();
+                startGame(inv.room, true);
+            };
+
+            // HANDLE DECLINE
+            document.getElementById('declineInv').onclick = () => {
+                db.ref('invite_responses/' + inv.fromUid).set({ accepted: false, time: Date.now() });
+                db.ref('invites/' + currentUser.uid).remove();
+                inviteBox.remove();
+            };
+        }
+    });
+}
 </script>
 </body>
     </html>
-
-
