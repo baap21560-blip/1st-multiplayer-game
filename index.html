@@ -7,6 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap');
 
@@ -181,6 +182,10 @@
             <span class="mode-icon">⬛</span>
             <div><b>Dots & Boxes</b><br><small>Strategic Territory</small></div>
         </div>
+        <div class="mode-card" onclick="selectMode('watch', this)">
+            <span class="mode-icon">📺</span>
+        <div><b>Watch Party</b><br><small>Watch YouTube Together</small></div>
+</div>
     </div>
 
     <input type="text" id="roomInput" placeholder="Room Name (Optional)...">
@@ -205,6 +210,21 @@
                 <button onclick="sendRPS('✂️')" style="width:70px; height:70px; font-size:2em; padding:0;">✂️</button>
             </div>
             <div id="rpsResult" style="margin-top:15px; font-size:1.1em; color:#facc15; font-weight:bold;"></div>
+        </div>
+
+        <div id="watchArea" style="display:none; margin:20px 0;">
+
+        <input id="watchURL" placeholder="Paste YouTube link..." style="width:70%">
+        <button onclick="setWatchVideo()" style="width:auto;">Load</button>
+
+        <div id="ytPlayer" style="width:100%; height:320px; margin-top:10px;"></div>
+
+        <div style="margin-top:10px;">
+          <button onclick="playVideo()">▶</button>
+             <button onclick="pauseVideo()">⏸</button>
+          <button onclick="syncVideo()">🔄 Sync</button>
+        </div>
+
         </div>
 
         <p id="playerLabel" style="color:#94a3b8; font-weight:bold; font-size:0.8em; margin: 15px 0;"></p>
@@ -304,6 +324,9 @@ let currentUser = JSON.parse(localStorage.getItem('ttt_player')) || null;
 let isLoginMode = false, gameRef, chatRef, presenceRef, mySymbol = "Spectator", turn, gameOver = false, currentRoomID = "";
 let mediaRecorder, audioChunks = [], timerInterval, seconds = 0, pendingName = "";
 let selectedGameMode = 'tictactoe';
+let player;
+let watchHost = null;
+let syncing = false;
 let lobbyRef;
 
 // --- INIT BOARD (TTT) ---
@@ -532,17 +555,63 @@ function startGame(roomId, isNew = false) {
     if (isNew) {
         gameRef.once('value', s => {
             if (!s.exists()) {
-                if (selectedGameMode === 'dlx') gameRef.set({ mode: 'dlx', lines: {}, boxes: {}, turn: 'X' });
-                else if (selectedGameMode === 'rps') gameRef.set({ mode: 'rps', pX: null, pO: null, turn: 'X' });
-                else gameRef.set({ mode: 'tictactoe', board: Array(9).fill(""), turn: 'X' });
+                if (selectedGameMode === 'dlx')
+                    gameRef.set({ mode: 'dlx', lines: {}, boxes: {}, turn: 'X' });
+
+                        else if (selectedGameMode === 'rps')
+                             gameRef.set({ mode: 'rps', pX: null, pO: null, turn: 'X' });
+
+                           else if (selectedGameMode === 'watch')
+                       gameRef.set({
+                   mode:'watch',
+                 video:'',
+             time:0,
+          playing:false,
+       host:currentUser.name
+    });
+
+else
+gameRef.set({ mode: 'tictactoe', board: Array(9).fill(""), turn: 'X' });
             }
         });
     }
 
     gameRef.on('value', snap => {
-        const d = snap.val();
-        if (!d) return;
-        turn = d.turn;
+
+    const d = snap.val();
+    if (!d) return;
+
+    if (d.mode === 'watch') {
+
+        boardDiv.style.display='none';
+        dotsBoard.style.display='none';
+        document.getElementById('rpsArea').style.display='none';
+        document.getElementById('watchArea').style.display='block';
+
+        watchHost = d.host;
+
+        if (d.video && player && player.getVideoData) {
+    const data = player.getVideoData();
+    const current = data ? data.video_id : null;
+
+    if (current !== d.video) {
+        player.loadVideoById(d.video, d.time);
+    }
+}
+
+       if(player){
+    if(d.playing) player.playVideo();
+    else player.pauseVideo();
+     }
+        
+document.getElementById('status').innerText =
+"📺 Watch Party — Host: " + d.host;
+        
+        return;
+   }
+
+    turn = d.turn;
+        document.getElementById('watchArea').style.display='none';
         if (d.mode === 'rps') {
             boardDiv.style.display = 'none'; dotsBoard.style.display = 'none'; document.getElementById('rpsArea').style.display = 'block';
             if (d.pX && d.pO) document.getElementById('rpsResult').innerHTML = `X: ${d.pX} | O: ${d.pO}`;
@@ -867,8 +936,105 @@ function listenForInvites() {
         }
     });
 }
+
+function onYouTubeIframeAPIReady(){
+
+player = new YT.Player('ytPlayer',{
+height:'320',
+width:'100%',
+videoId:'',
+playerVars:{
+controls:1,
+rel:0,
+autoplay:1
+},
+events:{}
+});
+
+}
+    
+function getYoutubeID(url){
+
+const reg = /(?:youtube\.com.*v=|youtu\.be\/)([^&]+)/;
+const match = url.match(reg);
+return match ? match[1] : null;
+
+}
+
+function setWatchVideo(){
+
+if(currentUser.name !== watchHost){
+alert("Only host can change video");
+return;
+}
+
+const url = document.getElementById("watchURL").value;
+const id = getYoutubeID(url);
+
+if(!id) return alert("Invalid YouTube link");
+
+gameRef.update({
+video:id,
+time:0,
+playing:false
+});
+
+}
+
+function playVideo(){
+
+if(currentUser.name !== watchHost) return;
+
+gameRef.update({
+playing:true,
+time:player.getCurrentTime()
+});
+
+}
+
+function pauseVideo(){
+
+if(currentUser.name !== watchHost) return;
+
+gameRef.update({
+playing:false,
+time:player.getCurrentTime()
+});
+
+}
+
+function syncVideo(){
+
+if(currentUser.name !== watchHost) return;
+
+gameRef.update({
+time:player.getCurrentTime()
+});
+
+}
+
+setInterval(()=>{
+
+    if(!player || !gameRef || !currentRoomID) return;
+
+    gameRef.once('value',snap=>{
+        const d = snap.val();
+        if(!d || d.mode !== 'watch') return;
+
+        if(!player.getCurrentTime) return;
+           const diff = Math.abs(player.getCurrentTime() - d.time);
+
+        if(diff > 2){
+            player.seekTo(d.time,true);
+        }
+
+    });
+
+},2000);
+    
 </script>
 </body>
-    </html>
+</html>
+
 
 
